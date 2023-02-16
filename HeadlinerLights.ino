@@ -9,6 +9,8 @@
 #define WIDE_LED_PIN 9
 #define NARROW_LED_PIN 8
 #define REMOTE_PIN 7
+#define CAMERA_SENSOR_TRIGGER 6
+#define REVERSE_TRIGGER A0
 
 // Button decoded values
 #define IR_1 69
@@ -39,7 +41,7 @@
 #define NUM_PIXELS 7
 #define MAXVAL 250
 #define MINVAL 0
-#define TWINKLE_DELAY 150
+#define TWINKLE_DELAY 200
 #define MAXHUE 256*6
 #define MIDHUE 256*3
 #define CAMERA_SENSOR_DELAY 10000
@@ -150,6 +152,17 @@ void resetValues() {
   saturationWide = 0;
   hueWide = 0;
   position = 0;
+}
+
+// returns true and selects a new state if a new command arrived, false otherwise
+bool checkIRRemoteCommand() {
+  if (IrReceiver.decode()) {
+    IrReceiver.resume();
+    selectCommand(IrReceiver.decodedIRData.command);
+    return true;
+  }
+
+  return false;
 }
 
 void setup() {
@@ -273,6 +286,35 @@ void turnNarrowOff() {
   }
 }
 
+// cycling effect
+void narrowCycle(int position) {
+  pixelsNarrow.setBrightness(brightnessNarrow);
+  for (int i = 0; i < NUM_PIXELS; i++) {
+    pixelsNarrow.setPixelColor((i + position) % NUM_PIXELS, getPixelColorHsv(i, hueNarrow, saturationNarrow, pixelsNarrow.gamma8(i * (255 / NUM_PIXELS))));    
+  }
+  pixelsNarrow.show();
+
+  // cycle through colors in rainbow mode
+  if (rainbowNarrow) {
+    hueNarrow = hueNarrow + 5;
+    hueNarrow %= MAXHUE;
+  }
+}
+
+void wideCycle(int position) {
+  pixelsWide.setBrightness(brightnessWide);
+  for (int i = 0; i < NUM_PIXELS; i++) {
+    pixelsWide.setPixelColor((i + position) % NUM_PIXELS, getPixelColorHsv(i, hueWide, saturationWide, pixelsWide.gamma8(i * (255 / NUM_PIXELS))));    
+  }
+  pixelsWide.show();
+
+  // cycle through colors in rainbow mode
+  if (rainbowWide) {
+    hueWide = hueWide + 5;
+    hueWide %= MAXHUE;
+  }
+}
+
 // executes the twinkle effect by cycling the rings
 void twinkleExecutor(bool single) {
   if (single) {
@@ -303,50 +345,18 @@ void twinkleCommander(bool single) {
     if (new_cycle) {
       currTime = millis();
       if (currTime > startTime + TWINKLE_DELAY) {
-        // change the twinkle (move on a new position) and restart counter
+        // time to change the twinkle (move on a new position) and restart counter
         startTime = millis();
         twinkleExecutor(single);
       } else {
-        // don't change twinkle (keep the same position), check new command
-        if (IrReceiver.decode()) {
-          IrReceiver.resume();
-          selectCommand(IrReceiver.decodedIRData.command);
-          return;
-        }        
+        // check for a new command and exit if necessary
+        if (checkIRRemoteCommand()) return;     
       }
     } else {
       new_cycle = true;
       startTime = millis();
       twinkleExecutor(single);
     }
-  }
-}
-
-void narrowCycle(int position) {
-  pixelsNarrow.setBrightness(brightnessNarrow);
-  for (int i = 0; i < NUM_PIXELS; i++) {
-    pixelsNarrow.setPixelColor((i + position) % NUM_PIXELS, getPixelColorHsv(i, hueNarrow, saturationNarrow, pixelsNarrow.gamma8(i * (255 / NUM_PIXELS))));    
-  }
-  pixelsNarrow.show();
-
-  // cycle through colors in rainbow mode
-  if (rainbowNarrow) {
-    hueNarrow = hueNarrow + 5;
-    hueNarrow %= MAXHUE;
-  }
-}
-
-void wideCycle(int position) {
-  pixelsWide.setBrightness(brightnessWide);
-  for (int i = 0; i < NUM_PIXELS; i++) {
-    pixelsWide.setPixelColor((i + position) % NUM_PIXELS, getPixelColorHsv(i, hueWide, saturationWide, pixelsWide.gamma8(i * (255 / NUM_PIXELS))));    
-  }
-  pixelsWide.show();
-
-  // cycle through colors in rainbow mode
-  if (rainbowWide) {
-    hueWide = hueWide + 5;
-    hueWide %= MAXHUE;
   }
 }
 
@@ -516,11 +526,7 @@ void selectCommand(uint16_t command) {
 }
 
 void loop() {
-  if (IrReceiver.decode()) {
-    // new command arrived
-    IrReceiver.resume();
-    selectCommand(IrReceiver.decodedIRData.command);
-  } else {
+  if (!checkIRRemoteCommand()) {
     // keep the last command if nothing new selected
     selectCommand(prevCommand);
   }
