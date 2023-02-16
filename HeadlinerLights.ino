@@ -45,6 +45,7 @@
 #define MAXHUE 256*6
 #define MIDHUE 256*3
 #define CAMERA_SENSOR_DELAY 10000
+#define REVERSE_THRESHOLD 100
 
 // Colors
 #define COLORNUM 45
@@ -58,9 +59,10 @@ int hueNarrow = 0, saturationNarrow = 0, saturationWide = 0, hueWide = 0, positi
 int brightnessWide = 200, brightnessNarrow = 150;
 int colorSelectWide = 0, colorSelectNarrow = 0;
 bool selectWide = false, selectNarrow = false, rainbowNarrow = false, rainbowWide = false;
+bool reverse_triggered = false, sensors_on = false;
 uint16_t prevCommand = IR_7;
 
-unsigned long currTime, startTime;
+unsigned long currTime, twinkleStartTime, reverseStartTime;
 
 uint32_t colors[COLORNUM];
 
@@ -163,6 +165,46 @@ bool checkIRRemoteCommand() {
   }
 
   return false;
+}
+
+// Pull down the relay trigger to ground for a msec (as if you would push the button)
+void signalCameraAndSensor() {
+  pinMode(CAMERA_SENSOR_TRIGGER, OUTPUT);
+  digitalWrite(CAMERA_SENSOR_TRIGGER, LOW);
+  delay(100);
+
+  // set pin back to high impedance
+  pinMode(CAMERA_SENSOR_TRIGGER, INPUT);
+  // change state
+  sensors_on = !sensors_on;
+}
+
+void checkReverseStatus() {
+  // range 0 to 1023 (ADC converted)
+  int reverse_value = analogRead(REVERSE_TRIGGER);
+
+  currTime = millis();
+  if (reverseStartTime + CAMERA_SENSOR_DELAY >= currTime && sensors_on) {
+    // turn off sensors if time has passed and they are already on
+    signalCameraAndSensor();
+  }
+
+  if (reverse_value > REVERSE_THRESHOLD) {
+    // reverse is engaged => set trigger
+    reverse_triggered = true;
+  } else {
+    // reverse is not engaged => check if you need to turn on front sensor
+    if (reverse_triggered) {
+      // start timer, turn on sensors and reset trigger event
+      reverseStartTime = millis();
+      reverse_triggered = false;
+
+      if (!sensors_on) {
+        // if sensors are already on, just reset the countdown timer
+        signalCameraAndSensor();
+      }
+    }    
+  }
 }
 
 void setup() {
@@ -344,17 +386,18 @@ void twinkleCommander(bool single) {
   while (true) {
     if (new_cycle) {
       currTime = millis();
-      if (currTime > startTime + TWINKLE_DELAY) {
+      if (currTime > twinkleStartTime + TWINKLE_DELAY) {
         // time to change the twinkle (move on a new position) and restart counter
-        startTime = millis();
+        twinkleStartTime = millis();
         twinkleExecutor(single);
       } else {
         // check for a new command and exit if necessary
+        checkReverseStatus();
         if (checkIRRemoteCommand()) return;     
       }
     } else {
       new_cycle = true;
-      startTime = millis();
+      twinkleStartTime = millis();
       twinkleExecutor(single);
     }
   }
@@ -526,6 +569,7 @@ void selectCommand(uint16_t command) {
 }
 
 void loop() {
+  checkReverseStatus();
   if (!checkIRRemoteCommand()) {
     // keep the last command if nothing new selected
     selectCommand(prevCommand);
