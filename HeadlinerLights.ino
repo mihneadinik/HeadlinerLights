@@ -9,7 +9,7 @@
 #define WIDE_LED_PIN 9
 #define NARROW_LED_PIN 8
 #define REMOTE_PIN 7
-#define CAMERA_SENSOR_TRIGGER 6
+#define CAMERA_SENSOR_TRIGGER 10
 #define REVERSE_TRIGGER A0
 
 // Button decoded values
@@ -45,7 +45,7 @@
 #define MAXHUE 256*6
 #define MIDHUE 256*3
 #define CAMERA_SENSOR_DELAY 10000
-#define REVERSE_THRESHOLD 100
+#define REVERSE_THRESHOLD 500
 
 // Colors
 #define COLORNUM 45
@@ -184,7 +184,7 @@ void checkReverseStatus() {
   int reverse_value = analogRead(REVERSE_TRIGGER);
 
   currTime = millis();
-  if (reverseStartTime + CAMERA_SENSOR_DELAY >= currTime && sensors_on) {
+  if (reverseStartTime + CAMERA_SENSOR_DELAY <= currTime && sensors_on) {
     // turn off sensors if time has passed and they are already on
     signalCameraAndSensor();
   }
